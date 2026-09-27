@@ -64,10 +64,13 @@ jobs:
           grep -nE 'Blocked mirror|401|403|Return code is|Could not (transfer|resolve|find)|Non-resolvable|Transfer failed' /tmp/deploy.log | head -10 || echo "(нічого з відомих сигнатур)"
           echo "=== останні 25 рядків ==="
           tail -25 /tmp/deploy.log || true
-          # анотації: їх видно в UI поруч із кроком і через API перевірок
+          # анотації: несе РЕАЛЬНІ рядки помилки, навіть якщо сигнатура невідома
           while IFS= read -r line; do
-            echo "::error title=Причина падіння Maven::$line"
-          done < <(grep -m5 -E 'Blocked mirror|401 Unauthorized|403 Forbidden|Return code is|Could not transfer|Could not resolve|Non-resolvable' /tmp/deploy.log || true)
+            [ -n "$line" ] && echo "::error title=Причина падіння Maven::$line"
+          done < <(grep -E '^\[ERROR\]' /tmp/deploy.log | head -4 || true)
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error title=Хвіст виводу Maven::$line"
+          done < <(tail -3 /tmp/deploy.log | sed 's/\r$//' || true)
 
       - name: Логи Nexus, якщо щось впало
         if: failure()
