@@ -35,7 +35,7 @@ jobs:
             [ -n "$line" ] && echo "::error title=Стенд (налаштування)::$line"
           done < <(grep -a -m6 -E '✗|помилка|НЕМАЄ' /tmp/setup.log || true)
 
-      - name: Діагностика авторизації: що Maven реально бачить
+      - name: Діагностика авторизації — що Maven реально бачить
         run: |
           echo "=== server id у settings.xml ==="
           python3 - <<'PY'
@@ -52,6 +52,9 @@ jobs:
           code=$(curl -s -o /tmp/put-real.out -w '%{http_code}' -u "admin:$(cat /tmp/pw.txt)" --upload-file lib/pom.xml \
             "http://localhost:8081/repository/qa-releases/qa/mentorship/qa-demo-lib/1.0.0/qa-demo-lib-1.0.0.pom")
           echo "   PUT HTTP $code"
+          echo "::notice title=Діагностика PUT::HTTP $code (тим самим шляхом, куди пише Maven)"
+          echo "::notice title=Діагностика settings::$(head -c 120 /tmp/pw.txt | wc -c) символів у паролі, id qa-releases: $(grep -c '<id>qa-releases</id>' /tmp/eff.xml 2>/dev/null || echo 0)"
+          echo "::notice title=Діагностика коду сторінки::$(head -c 150 /tmp/put-real.out 2>/dev/null | tr -d '\n')"
           head -c 200 /tmp/put-real.out || true
 
       - name: Задеплоїти власний артефакт у внутрішній репозиторій
