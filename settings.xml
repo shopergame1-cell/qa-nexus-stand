@@ -11,6 +11,15 @@
       <username>admin</username>
       <password>qa-stand-admin</password>
     </server>
+    <!-- ПАСТКА, на якій легко застрягнути на годину: mirror нижче перехоплює http-репозиторії
+         (це ідіома «дозволити http» для Maven 3.8+). Коли mirror перехоплює репозиторій,
+         Maven шукає пароль за id MIRROR'а, а не репозиторію — тому без цього запису деплой
+         падає з 401, хоча id репозиторію і пароль правильні. -->
+    <server>
+      <id>maven-default-http-blocker</id>
+      <username>admin</username>
+      <password>qa-stand-admin</password>
+    </server>
   </servers>
   <mirrors>
     <!-- Вузький mirrorOf: перехоплюємо ТІЛЬКИ central, інакше mirror зламає доступ
