@@ -24,7 +24,16 @@ jobs:
         run: docker compose up -d
 
       - name: Дочекатись готовності і створити репозиторії
-        run: bash setup-repos.sh
+        run: bash setup-repos.sh 2>&1 | tee /tmp/setup.log
+
+      - name: Пояснити, на чому впало налаштування стенда
+        if: failure()
+        run: |
+          echo "=== останні 30 рядків налаштування ==="
+          tail -30 /tmp/setup.log || true
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error title=Стенд (налаштування)::$line"
+          done < <(grep -a -m6 -E '✗|помилка|НЕМАЄ' /tmp/setup.log || true)
 
       - name: Задеплоїти власний артефакт у внутрішній репозиторій
         run: |
