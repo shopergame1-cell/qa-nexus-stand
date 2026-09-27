@@ -29,7 +29,8 @@ jobs:
       - name: Задеплоїти власний артефакт у внутрішній репозиторій
         run: |
           mkdir -p /tmp/local-repo
-          mvn -q -B -s settings.xml -Dmaven.repo.local=/tmp/local-repo -f lib/pom.xml deploy
+          set -o pipefail
+          mvn -B -s settings.xml -Dmaven.repo.local=/tmp/local-repo -f lib/pom.xml deploy 2>&1 | tee /tmp/deploy.log | tail -40
 
       - name: Перевірити, що артефакт лежить саме у стенді
         run: |
@@ -55,6 +56,18 @@ jobs:
           else
             echo "Очікувано: без внутрішнього репозиторію залежність не розвʼязується"
           fi
+
+      - name: Пояснити причину падіння (анотація у UI)
+        if: failure()
+        run: |
+          echo "=== ключові рядки Maven ==="
+          grep -nE 'Blocked mirror|401|403|Return code is|Could not (transfer|resolve|find)|Non-resolvable|Transfer failed' /tmp/deploy.log | head -10 || echo "(нічого з відомих сигнатур)"
+          echo "=== останні 25 рядків ==="
+          tail -25 /tmp/deploy.log || true
+          # анотації: їх видно в UI поруч із кроком і через API перевірок
+          while IFS= read -r line; do
+            echo "::error title=Причина падіння Maven::$line"
+          done < <(grep -m5 -E 'Blocked mirror|401 Unauthorized|403 Forbidden|Return code is|Could not transfer|Could not resolve|Non-resolvable' /tmp/deploy.log || true)
 
       - name: Логи Nexus, якщо щось впало
         if: failure()
