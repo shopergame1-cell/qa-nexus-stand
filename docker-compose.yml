@@ -9,7 +9,12 @@ services:
     environment:
       # Пароль адміністратора для навчального стенда (у реальному житті — секрет, не в git)
       NEXUS_ADMIN_PASSWORD: "qa-stand-admin"
-      INSTALL4J_ADD_VM_PARAMS: "-Xms512m -Xmx1024m -XX:MaxDirectMemorySize=1024m"
+      # Навчальний стенд: у Nexus вбудований анти-брутфорс блокує IP на час після кількох
+      # невдалих спроб входу. На стенді це шкодить: студент, який двічі ввів пароль неправильно,
+      # отримує 401 навіть із правильним паролем і не розуміє, що сталося.
+      # У продакшені цей захист ТРЕБА лишати ввімкненим.
+      NEXUS_ANTIBRUTEFORCE: "false"
+      INSTALL4J_ADD_VM_PARAMS: "-Xms512m -Xmx1024m -XX:MaxDirectMemorySize=1024m -Dnexus.security.antibruteforce.enabled=false"
     volumes:
       - nexus-data:/nexus-data
     healthcheck:
