@@ -35,6 +35,30 @@ jobs:
             [ -n "$line" ] && echo "::error title=Стенд (налаштування)::$line"
           done < <(grep -a -m6 -E '✗|помилка|НЕМАЄ' /tmp/setup.log || true)
 
+      - name: Діагностика авторизації: що Maven реально бачить
+        run: |
+          echo "=== які server id бачить Maven ==="
+          mvn -q -B -s settings.xml help:effective-settings -Doutput=/tmp/eff.xml >/dev/null 2>&1 || true
+          grep -o '<server>[^@]*</server>' /tmp/eff.xml 2>/dev/null | head -3 || echo "(effective-settings не згенерувався)"
+          grep -c 'qa-releases' /tmp/eff.xml 2>/dev/null || true
+          echo "=== пароль у settings.xml (перші символи, без повного значення) ==="
+          python3 -c "
+import re, pathlib
+t = pathlib.Path('settings.xml').read_text(encoding='utf-8')
+pw = re.findall(r'<password>([^<]*)</password>', t)
+sid = re.findall(r'<server>\s*<id>([^<]+)</id>', t)
+print('   server id:', sid, '| довжина пароля:', [len(p) for p in pw])
+"
+          echo "=== PUT реального файлу (той самий шлях, куди пише Maven) ==="
+          PW=$(python3 -c "
+import re, pathlib
+t = pathlib.Path('settings.xml').read_text(encoding='utf-8')
+print(re.findall(r'<password>([^<]*)</password>', t)[0])
+")
+          curl -s -o /tmp/put-real.out -w 'PUT sha1: %{http_code}\n' -u "admin:$PW" --upload-file lib/pom.xml \
+            "http://localhost:8081/repository/qa-releases/qa/mentorship/qa-demo-lib/1.0.0/qa-demo-lib-1.0.0.pom" || true
+          head -c 200 /tmp/put-real.out || true
+
       - name: Задеплоїти власний артефакт у внутрішній репозиторій
         run: |
           mkdir -p /tmp/local-repo
