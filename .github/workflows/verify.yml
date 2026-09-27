@@ -61,7 +61,7 @@ jobs:
         run: |
           mkdir -p /tmp/local-repo
           set -o pipefail
-          mvn -B -s settings.xml -Dmaven.repo.local=/tmp/local-repo -f lib/pom.xml deploy 2>&1 | tee /tmp/deploy.log | tail -40
+          mvn -B -X -s settings.xml -Dmaven.repo.local=/tmp/local-repo -f lib/pom.xml deploy 2>&1 | tee /tmp/deploy.log | tail -40
 
       - name: Перевірити, що артефакт лежить саме у стенді
         run: |
@@ -87,6 +87,19 @@ jobs:
           else
             echo "Очікувано: без внутрішнього репозиторію залежність не розвʼязується"
           fi
+
+      - name: Показати рядки Maven про авторизацію
+        if: failure()
+        run: |
+          tr -d '\r' < /tmp/deploy.log > /tmp/deploy.clean.log || true
+          echo "=== рядки про авторизацію ==="
+          grep -a -m10 -iE 'authoriz|authenticat|credentials|basic |challenge|WWW-Auth' /tmp/deploy.clean.log || echo "(рядків про авторизацію немає)"
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error title=Maven auth::$line"
+          done < <(grep -a -m6 -iE 'authoriz|authenticat|credentials|basic |WWW-Auth' /tmp/deploy.clean.log || true)
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error title=Maven repository::$line"
+          done < <(grep -a -m4 -E 'Using (mirror|server)|repository.*qa-releases|qa-releases.*repository' /tmp/deploy.clean.log || true)
 
       - name: Пояснити причину падіння (анотація у UI)
         if: failure()
