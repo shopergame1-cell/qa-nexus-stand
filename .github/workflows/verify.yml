@@ -1,0 +1,65 @@
+name: verify stand
+
+# TASK-55.1: перевірка стенда без корпоративних систем — усе локально.
+# Кроки: підняти Nexus -> створити репозиторії -> задеплоїти свій артефакт ->
+# переконатись, що збірка тягне його САМЕ зі стенда (у чистому локальному кеші).
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  stand:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Підняти Nexus
+        run: docker compose up -d
+
+      - name: Дочекатись готовності і створити репозиторії
+        run: bash setup-repos.sh
+
+      - name: Задеплоїти власний артефакт у внутрішній репозиторій
+        run: |
+          mkdir -p /tmp/local-repo
+          mvn -q -B -s settings.xml -Dmaven.repo.local=/tmp/local-repo -f lib/pom.xml deploy
+
+      - name: Перевірити, що артефакт лежить саме у стенді
+        run: |
+          curl -sf -u admin:qa-stand-admin \
+            http://localhost:8081/repository/qa-releases/qa/mentorship/qa-demo-lib/1.0.0/qa-demo-lib-1.0.0.pom \
+            -o /dev/null && echo "POM знайдено у qa-releases"
+
+      - name: Зібрати споживача в ЧИСТОМУ локальному кеші (має тягнути зі стенда)
+        run: |
+          rm -rf /tmp/consumer-repo
+          mkdir -p /tmp/consumer-repo
+          mvn -B -s settings.xml -Dmaven.repo.local=/tmp/consumer-repo -f consumer/pom.xml -X dependency:resolve \
+            | tee /tmp/consumer.log
+          grep -q "qa-public" /tmp/consumer.log && echo "залежність знайдено через внутрішній репозиторій"
+
+      - name: Негативна перевірка — без внутрішнього репозиторію збірка мусить упасти
+        run: |
+          rm -rf /tmp/negative-repo
+          mkdir -p /tmp/negative-repo
+          if mvn -q -B -Dmaven.repo.local=/tmp/negative-repo -f consumer/pom.xml dependency:resolve; then
+            echo "ПОМИЛКА: збірка пройшла без внутрішнього репозиторію — артефакт є в Central? Такого бути не може."
+            exit 1
+          else
+            echo "Очікувано: без внутрішнього репозиторію залежність не розвʼязується"
+          fi
+
+      - name: Логи Nexus, якщо щось впало
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Прибрати стенд
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TASK-55.1: навчальна бібліотека. Її деплоять у hosted-репозиторій стенда,
+     щоб потім перевірити, що Maven тягне артефакт САМЕ звідти, а не з Central. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>qa.mentorship</groupId>
+  <artifactId>qa-demo-lib</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <distributionManagement>
+    <repository>
+      <!-- id мусить збігатися з id сервера у settings.xml -->
+      <id>qa-releases</id>
+      <url>http://localhost:8081/repository/qa-releases/</url>
+    </repository>
+  </distributionManagement>
+</project>

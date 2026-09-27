@@ -1,0 +1,22 @@
+# TASK-55.1: локальний менеджер репозиторіїв піднімається однією командою:  docker compose up -d
+# Порт 8081 — UI і REST API. Дані лежать у томі, тож налаштування переживають перезапуск.
+services:
+  nexus:
+    image: sonatype/nexus3:3.70.1
+    container_name: qa-nexus
+    ports:
+      - "8081:8081"
+    environment:
+      # Пароль адміністратора для навчального стенда (у реальному житті — секрет, не в git)
+      NEXUS_ADMIN_PASSWORD: "qa-stand-admin"
+      INSTALL4J_ADD_VM_PARAMS: "-Xms512m -Xmx1024m -XX:MaxDirectMemorySize=1024m"
+    volumes:
+      - nexus-data:/nexus-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/service/rest/v1/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  nexus-data:
