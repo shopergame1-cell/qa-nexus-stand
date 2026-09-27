@@ -52,7 +52,29 @@ else
   log "файлу немає — вважаємо, що пароль стенда вже діє (том з попереднього запуску)"
 fi
 
-echo "$NEXUS_USER:$STAND_PASSWORD" > "$PASSWORD_FILE"
+echo "== створюю окремого користувача для деплою =="
+# Деплоїти під адміністратором — погана практика. Створюємо сервісного користувача з роллю nx-admin
+# і використовуємо ЛИШЕ його для публікації артефактів.
+DEPLOY_USER="${DEPLOY_USER:-qa-deploy}"
+DEPLOY_PASSWORD="${DEPLOY_PASSWORD:-qa-deploy-pass}"
+u_code=$(curl -s -o /tmp/nexus-user.out -w '%{http_code}' $AUTH -X POST "$NEXUS_URL/service/rest/v1/security/users" \
+  -H 'Content-Type: application/json' \
+  -d "{\"userId\":\"$DEPLOY_USER\",\"firstName\":\"QA\",\"lastName\":\"Deploy\",\"email\":\"qa-deploy@stand.local\",\"source\":\"default\",\"password\":\"$DEPLOY_PASSWORD\",\"status\":\"active\",\"roles\":[\"nx-admin\"]}")
+case "$u_code" in
+  200|201) log "користувача $DEPLOY_USER створено" ;;
+  400) log "користувач $DEPLOY_USER уже існує" ;;
+  *) echo "   ✗ не вдалося створити користувача (HTTP $u_code): $(head -c 200 /tmp/nexus-user.out)"; exit 1 ;;
+esac
+
+echo "== перевіряю, що сервісний користувач може ПИСАТИ =="
+w_code=$(curl -s -o /dev/null -w '%{http_code}' -u "$DEPLOY_USER:$DEPLOY_PASSWORD" -X PUT \
+  --data-binary "@$0" "$NEXUS_URL/repository/qa-releases/qa/mentorship/deploy-probe.txt")
+case "$w_code" in
+  200|201|204) log "$DEPLOY_USER може писати в qa-releases (HTTP $w_code)" ;;
+  *) echo "   ✗ сервісний користувач не може писати (HTTP $w_code)"; exit 1 ;;
+esac
+
+echo "$DEPLOY_USER:$DEPLOY_PASSWORD" > "$PASSWORD_FILE"
 chmod 600 "$PASSWORD_FILE"
 
 AUTH="-u $NEXUS_USER:$STAND_PASSWORD"

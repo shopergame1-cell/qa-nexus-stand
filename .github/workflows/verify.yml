@@ -35,6 +35,20 @@ jobs:
             [ -n "$line" ] && echo "::error title=Стенд (налаштування)::$line"
           done < <(grep -a -m6 -E '✗|помилка|НЕМАЄ' /tmp/setup.log || true)
 
+      - name: Використати сервісного користувача для деплою
+        run: |
+          CREDS=$(cat .nexus-password)
+          python3 - "$CREDS" <<'PY'
+          import pathlib, sys, re
+          user, pw = sys.argv[1].split(":", 1)
+          p = pathlib.Path("settings.xml")
+          t = p.read_text(encoding="utf-8")
+          t = re.sub(r"<username>[^<]*</username>", f"<username>{user}</username>", t)
+          t = re.sub(r"<password>[^<]*</password>", f"<password>{pw}</password>", t)
+          p.write_text(t, encoding="utf-8")
+          print(f"   settings.xml: деплой під користувачем {user}")
+          PY
+
       - name: Задеплоїти власний артефакт у внутрішній репозиторій
         run: |
           mkdir -p /tmp/local-repo
