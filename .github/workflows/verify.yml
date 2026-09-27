@@ -60,6 +60,37 @@ jobs:
           echo "::notice title=Діагностика коду сторінки::$(head -c 150 /tmp/put-real.out 2>/dev/null | tr -d '\n')"
           head -c 200 /tmp/put-real.out || true
 
+      - name: Підставити в settings.xml робочий пароль адміністратора
+        run: |
+          # Nexus генерує пароль адміністратора сам; у різних версіях він або у файлі
+          # /nexus-data/admin.password, або відразу з env. Тому не вгадуємо, а перевіряємо,
+          # який із двох справді авторизується ПРЯМО ЗАРАЗ, і підставляємо саме його.
+          FROM_FILE=$(docker compose exec -T nexus cat /nexus-data/admin.password 2>/dev/null | tr -d '\r\n' || true)
+          CANDIDATES="$FROM_FILE qa-stand-admin"
+          WORKING=""
+          for pw in $CANDIDATES; do
+            [ -z "$pw" ] && continue
+            if curl -sf -u "admin:$pw" "http://localhost:8081/service/rest/v1/repositories" >/dev/null 2>&1; then
+              WORKING="$pw"
+              break
+            fi
+          done
+          if [ -z "$WORKING" ]; then
+            echo "::error title=Rобочий пароль::жоден із кандидатів не авторизується (файл: ${#FROM_FILE} символів)"
+            exit 1
+          fi
+          echo "::error title=Робочий пароль::знайдено пароль, що авторизується (з файлу: $([ -n "$FROM_FILE" ] && echo так || echo ні))"
+          python3 - "$WORKING" <<'PY'
+          import pathlib, sys
+          pw = sys.argv[1]
+          p = pathlib.Path("settings.xml")
+          t = p.read_text(encoding="utf-8")
+          import re
+          t = re.sub(r"<password>[^<]*</password>", f"<password>{pw}</password>", t)
+          p.write_text(t, encoding="utf-8")
+          print("   settings.xml оновлено робочим паролем")
+          PY
+
       - name: Задеплоїти власний артефакт у внутрішній репозиторій
         run: |
           mkdir -p /tmp/local-repo
