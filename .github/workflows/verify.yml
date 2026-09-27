@@ -48,10 +48,13 @@ jobs:
           echo "=== що Maven бачить у своїх ефективних налаштуваннях ==="
           mvn -q -B -s settings.xml help:effective-settings -Doutput=/tmp/eff.xml >/dev/null 2>&1 || true
           grep -o '<id>qa-releases</id>' /tmp/eff.xml 2>/dev/null | head -2 || echo "   (ефективні налаштування не згенерувались)"
-          echo "=== PUT реального файлу тим самим шляхом, куди пише Maven ==="
+          echo "=== точні коди curl для того самого шляху, куди пише Maven ==="
+          auth=$(curl -s -o /dev/null -w '%{http_code}' -u "admin:$(cat /tmp/pw.txt)" "http://localhost:8081/service/rest/v1/security/users")
+          echo "   авторизація в REST: HTTP $auth"
           code=$(curl -s -o /tmp/put-real.out -w '%{http_code}' -u "admin:$(cat /tmp/pw.txt)" --upload-file lib/pom.xml \
             "http://localhost:8081/repository/qa-releases/qa/mentorship/qa-demo-lib/1.0.0/qa-demo-lib-1.0.0.pom")
-          echo "   PUT HTTP $code"
+          echo "   PUT артефакту: HTTP $code"
+          echo "::error title=Діагностика кред::REST auth HTTP $auth, PUT артефакту HTTP $code (тим самим паролем, що й Maven)"
           echo "::notice title=Діагностика PUT::HTTP $code (тим самим шляхом, куди пише Maven)"
           echo "::notice title=Діагностика settings::$(head -c 120 /tmp/pw.txt | wc -c) символів у паролі, id qa-releases: $(grep -c '<id>qa-releases</id>' /tmp/eff.xml 2>/dev/null || echo 0)"
           echo "::notice title=Діагностика коду сторінки::$(head -c 150 /tmp/put-real.out 2>/dev/null | tr -d '\n')"
@@ -61,7 +64,13 @@ jobs:
         run: |
           mkdir -p /tmp/local-repo
           set -o pipefail
-          mvn -B -X -s settings.xml -Dmaven.repo.local=/tmp/local-repo -f lib/pom.xml deploy 2>&1 | tee /tmp/deploy.log | tail -40
+          if mvn -B -X -s settings.xml -Dmaven.repo.local=/tmp/local-repo -f lib/pom.xml deploy 2>&1 | tee /tmp/deploy.log | tail -20; then
+            echo "деплой пройшов рідним транспортом"
+          else
+            echo "--- рідний транспорт не спрацював, пробую wagon ---"
+            mvn -B -X -s settings.xml -Dmaven.resolver.transport=wagon -Dmaven.repo.local=/tmp/local-repo \
+              -f lib/pom.xml deploy 2>&1 | tee /tmp/deploy-wagon.log | tail -20
+          fi
 
       - name: Перевірити, що артефакт лежить саме у стенді
         run: |
@@ -110,6 +119,7 @@ jobs:
           tail -25 /tmp/deploy.log || true
           # Maven друкує прогрес із \r — прибираємо їх, інакше grep за анкором не бачить рядків
           tr -d '\r' < /tmp/deploy.log > /tmp/deploy.clean.log || true
+          [ -f /tmp/deploy-wagon.log ] && { tr -d '\r' < /tmp/deploy-wagon.log > /tmp/deploy-wagon.clean.log; echo "(була спроба через wagon)"; }
 
           echo "=== ключові рядки ==="
           grep -a -m8 -E 'Failed to execute goal|Could not|Return code is|Non-resolvable|401|403|Blocked mirror' /tmp/deploy.clean.log || echo "(ключових рядків не знайдено)"
