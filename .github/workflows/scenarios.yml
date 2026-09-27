@@ -1,0 +1,54 @@
+name: verify scenarios
+
+# TASK-55.2: для кожного сценарію перевіряємо три речі:
+#   1) setup.sh створює стан, у якому check.sh ПАДАЄ (стан справді зламаний);
+#   2) еталонний розвʼязок із solution/ застосовується;
+#   3) після розвʼязку check.sh ПРОХОДИТЬ (задача розвʼязувана).
+# Якщо хоч один сценарій не проходить цю послідовність — прогін червоний.
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Підняти Nexus і створити репозиторії
+        run: |
+          docker compose up -d
+          bash setup-repos.sh
+
+      - name: Сценарій 01 — залежність лише у внутрішньому репозиторії
+        run: bash scenarios/run-scenario.sh 01
+
+      - name: Сценарій 02 — 401 через розбіжність id
+        run: bash scenarios/run-scenario.sh 02
+
+      - name: Сценарій 03 — надто широкий mirrorOf
+        run: bash scenarios/run-scenario.sh 03
+
+      - name: Сценарій 04 — політика оновлення snapshot
+        run: bash scenarios/run-scenario.sh 04
+
+      - name: Сценарій 05 — артефакт лише в локальному кеші
+        run: bash scenarios/run-scenario.sh 05
+
+      - name: Сценарій 06 — дві версії однієї бібліотеки
+        run: bash scenarios/run-scenario.sh 06
+
+      - name: Логи Nexus, якщо щось впало
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Прибрати стенд
+        if: always()
+        run: docker compose down -v
