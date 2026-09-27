@@ -70,7 +70,10 @@ jobs:
           WORKING=""
           for pw in $CANDIDATES; do
             [ -z "$pw" ] && continue
-            if curl -sf -u "admin:$pw" "http://localhost:8081/service/rest/v1/repositories" >/dev/null 2>&1; then
+            # перевіряємо саме ЗАПИС: читання списку репозиторіїв доступне анонімно і нічого не доводить
+            c=$(curl -s -o /dev/null -w '%{http_code}' -u "admin:$pw" -X PUT --data-binary "@settings.xml" \
+              "http://localhost:8081/repository/qa-releases/qa/mentorship/probe-check.txt")
+            if [ "$c" = "200" ] || [ "$c" = "201" ] || [ "$c" = "204" ]; then
               WORKING="$pw"
               break
             fi

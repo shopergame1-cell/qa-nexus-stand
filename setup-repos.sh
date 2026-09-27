@@ -95,14 +95,36 @@ if missing:
     print('   ✗ не створено:', ', '.join(missing)); sys.exit(1)
 "
 
-echo "== перевіряю, що репозиторій приймає деплой (порожній пробний PUT) =="
-code=$(curl -s -o /tmp/nexus-put.out -w '%{http_code}' $AUTH -X PUT \
-  -H 'Content-Type: application/xml' --data '<probe/>' \
-  "$NEXUS_URL/repository/qa-releases/qa/mentorship/probe/probe.xml")
+echo "== перевіряю, що репозиторій приймає ЗАПИС (саме це робить деплой) =="
+# Важливо: читати список репозиторіїв може навіть анонімний користувач, тому перевіряти
+# пароль читанням — оманливо. Єдина надійна перевірка — спробувати записати.
+write_code() {
+  curl -s -o /tmp/nexus-put.out -w '%{http_code}' -u "admin:$1" -X PUT \
+    --data-binary "@$0" "$NEXUS_URL/repository/qa-releases/qa/mentorship/probe/probe.txt"
+}
+code=$(write_code "$STAND_PASSWORD")
 case "$code" in
-  200|201|204) log "qa-releases приймає записи (HTTP $code)" ;;
-  401|403) echo "   ✗ репозиторій не приймає авторизований запис (HTTP $code) — саме це ламає деплой"; exit 1 ;;
-  *) log "qa-releases відповів HTTP $code на пробний PUT (не критично)" ;;
+  200|201|204) log "qa-releases приймає записи паролем стенда (HTTP $code)" ;;
+  *)
+    echo "   ✗ пароль стенда НЕ дає запису (HTTP $code) — саме це ламає деплой"
+    # пробуємо початковий пароль із файлу: якщо він дає запис, зводимо до пароля стенда
+    INITIAL2=$(docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T "$COMPOSE_SERVICE" \
+      cat /nexus-data/admin.password 2>/dev/null | tr -d '\r\n' || true)
+    if [ -n "$INITIAL2" ] && [ "$(curl -s -o /dev/null -w '%{http_code}' -u "admin:$INITIAL2" -X PUT --data-binary "@$0" "$NEXUS_URL/repository/qa-releases/qa/mentorship/probe/probe2.txt")" != "401" ]; then
+      log "початковий пароль із файлу дає запис — зводжу його до пароля стенда"
+      curl -s -o /dev/null -w '   зміна пароля: HTTP %{http_code}\n' -u "admin:$INITIAL2" \
+        -X PUT "$NEXUS_URL/service/rest/v1/security/users/admin/change-password" \
+        -H 'Content-Type: application/json' -d "{\"newPassword\":\"$STAND_PASSWORD\"}"
+      code=$(write_code "$STAND_PASSWORD")
+      case "$code" in
+        200|201|204) log "тепер пароль стенда дає запис (HTTP $code)" ;;
+        *) echo "   ✗ усе ще не дає запису (HTTP $code)"; exit 1 ;;
+      esac
+    else
+      echo "   ✗ жоден із паролів не дає запису — проблема не в паролі"
+      exit 1
+    fi
+    ;;
 esac
 
 echo "Готово. Далі дивись README.md: як задеплоїти свій артефакт і як переконатись, що Maven тягне його саме зі стенда."
