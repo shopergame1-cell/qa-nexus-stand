@@ -15,20 +15,15 @@
   <mirrors>
     <!-- Вузький mirrorOf: перехоплюємо ТІЛЬКИ central, інакше mirror зламає доступ
          до внутрішніх репозиторіїв (сценарій 3 з TASK-55.2) -->
-    <!-- ПАСТКА: Maven 3.8+ з коробки блокує БУДЬ-ЯКИЙ http-репозиторій (не https).
-         Локальний Nexus працює саме по http, тому дозволяємо це явно.
-         У продакшені так робити не можна — там Nexus має бути за https. -->
+    <!-- Дозвіл на http-репозиторій: Maven 3.8+ блокує їх із коробки, а локальний стенд працює
+         саме по http. У продакшені так робити не можна — там Nexus за https. -->
     <mirror>
       <id>maven-default-http-blocker</id>
       <mirrorOf>external:http:*</mirrorOf>
       <url>http://0.0.0.0/</url>
       <blocked>false</blocked>
     </mirror>
-    <mirror>
-      <id>qa-public-mirror</id>
-      <name>Stand group repository</name>
-      <url>http://localhost:8081/repository/qa-public/</url>
-      <mirrorOf>central</mirrorOf>
-    </mirror>
+    <!-- Навмисно НЕ ставимо mirror на central: плагіни Maven бере з Central напряму, інакше
+         будь-яка дрібниця на стенді ламає саму збірку. Пастки з mirrorOf розібрані в сценарії 3. -->
   </mirrors>
 </settings>
