@@ -64,13 +64,23 @@ jobs:
           grep -nE 'Blocked mirror|401|403|Return code is|Could not (transfer|resolve|find)|Non-resolvable|Transfer failed' /tmp/deploy.log | head -10 || echo "(нічого з відомих сигнатур)"
           echo "=== останні 25 рядків ==="
           tail -25 /tmp/deploy.log || true
-          # анотації: несе РЕАЛЬНІ рядки помилки, навіть якщо сигнатура невідома
+          # Maven друкує прогрес із \r — прибираємо їх, інакше grep за анкором не бачить рядків
+          tr -d '\r' < /tmp/deploy.log > /tmp/deploy.clean.log || true
+
+          echo "=== ключові рядки ==="
+          grep -a -m8 -E 'Failed to execute goal|Could not|Return code is|Non-resolvable|401|403|Blocked mirror' /tmp/deploy.clean.log || echo "(ключових рядків не знайдено)"
+
+          # анотації: саме причина падіння, а не хвіст із посиланнями на довідку
           while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error title=Причина падіння Maven::$line"
-          done < <(grep -E '^\[ERROR\]' /tmp/deploy.log | head -4 || true)
+            [ -n "$line" ] && echo "::error title=Maven (причина)::$line"
+          done < <(grep -a -m5 -E 'Failed to execute goal|Return code is|Could not transfer|Could not deploy|Non-resolvable' /tmp/deploy.clean.log || true)
+
           while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error title=Хвіст виводу Maven::$line"
-          done < <(tail -3 /tmp/deploy.log | sed 's/\r$//' || true)
+            [ -n "$line" ] && echo "::error title=Maven (помилка)::$line"
+          done < <(grep -a -E '^\[ERROR\]' /tmp/deploy.clean.log | head -5 || true)
+
+          echo "=== контекст навколо першої помилки ==="
+          grep -a -n -m1 -A6 -B2 'Failed to execute goal' /tmp/deploy.clean.log || tail -40 /tmp/deploy.clean.log || true
 
       - name: Логи Nexus, якщо щось впало
         if: failure()
