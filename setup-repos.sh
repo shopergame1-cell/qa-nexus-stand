@@ -28,34 +28,28 @@ for i in $(seq 1 60); do
   if [ "$i" = "60" ]; then echo "   ✗ Nexus не піднявся за 5 хвилин"; exit 1; fi
 done
 
-echo "== зводжу пароль адміністратора до пароля стенда =="
-if curl -sf -u "$NEXUS_USER:$STAND_PASSWORD" "$NEXUS_URL/service/rest/v1/status/check" >/dev/null 2>&1; then
-  log "пароль стенда вже діє"
-else
-  INITIAL=""
-  # 1) спосіб для локального запуску: файл у контейнері
-  if command -v docker >/dev/null 2>&1; then
-    INITIAL=$(docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T "$COMPOSE_SERVICE" \
-      cat /nexus-data/admin.password 2>/dev/null | tr -d '\r\n' || true)
-  fi
-  # 2) спосіб для CI: пароль переданий через змінну (коли файл недоступний)
-  INITIAL="${INITIAL:-${NEXUS_INITIAL_PASSWORD:-}}"
+echo "== пароль адміністратора =="
+# У цій версії Nexus пароль адміністратора НЕ береться зі змінної середовища: він генерується
+# і кладеться у /nexus-data/admin.password (файл існує лише до першої зміни пароля).
+# Тому не «пробуємо» різні паролі (кожна невдала спроба наближає блокування IP анти-брутфорсом),
+# а діємо однозначно: є файл -> читаємо і зводимо до пароля стенда; немає -> пароль уже наш.
+INITIAL=""
+if command -v docker >/dev/null 2>&1; then
+  INITIAL=$(docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T "$COMPOSE_SERVICE" \
+    cat /nexus-data/admin.password 2>/dev/null | tr -d '\r\n' || true)
+fi
 
-  if [ -z "$INITIAL" ]; then
-    echo "   ✗ не вдалося дістати початковий пароль адміністратора"
-    echo "     локально: docker compose exec nexus cat /nexus-data/admin.password"
-    exit 1
-  fi
-
+if [ -n "$INITIAL" ]; then
+  log "файл адмін-пароля знайдено — зводжу пароль до пароля стенда (одна спроба, без вгадувань)"
   code=$(curl -s -o /tmp/nexus-pw.out -w '%{http_code}' -u "$NEXUS_USER:$INITIAL" \
     -X PUT "$NEXUS_URL/service/rest/v1/security/users/admin/change-password" \
     -H 'Content-Type: application/json' -d "{\"newPassword\":\"$STAND_PASSWORD\"}")
-  if [ "$code" = "204" ] || [ "$code" = "200" ]; then
-    log "пароль адміністратора змінено на пароль стенда"
-  else
-    echo "   ✗ не вдалося змінити пароль (HTTP $code): $(head -c 200 /tmp/nexus-pw.out)"
-    exit 1
-  fi
+  case "$code" in
+    204|200) log "пароль адміністратора зведено до пароля стенда" ;;
+    *) echo "   ✗ не вдалося змінити пароль (HTTP $code): $(head -c 200 /tmp/nexus-pw.out)"; exit 1 ;;
+  esac
+else
+  log "файлу немає — вважаємо, що пароль стенда вже діє (том з попереднього запуску)"
 fi
 
 echo "$NEXUS_USER:$STAND_PASSWORD" > "$PASSWORD_FILE"

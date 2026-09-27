@@ -35,65 +35,6 @@ jobs:
             [ -n "$line" ] && echo "::error title=Стенд (налаштування)::$line"
           done < <(grep -a -m6 -E '✗|помилка|НЕМАЄ' /tmp/setup.log || true)
 
-      - name: Діагностика авторизації — що Maven реально бачить
-        run: |
-          echo "=== server id у settings.xml ==="
-          python3 - <<'PY'
-          import re, pathlib
-          t = pathlib.Path('settings.xml').read_text(encoding='utf-8')
-          print('   server id:', re.findall(r'<server>\s*<id>([^<]+)</id>', t))
-          print('   довжина пароля:', [len(p) for p in re.findall(r'<password>([^<]*)</password>', t)])
-          pathlib.Path('/tmp/pw.txt').write_text(re.findall(r'<password>([^<]*)</password>', t)[0], encoding='utf-8')
-          PY
-          echo "=== що Maven бачить у своїх ефективних налаштуваннях ==="
-          mvn -q -B -s settings.xml help:effective-settings -Doutput=/tmp/eff.xml >/dev/null 2>&1 || true
-          grep -o '<id>qa-releases</id>' /tmp/eff.xml 2>/dev/null | head -2 || echo "   (ефективні налаштування не згенерувались)"
-          echo "=== точні коди curl для того самого шляху, куди пише Maven ==="
-          auth=$(curl -s -o /dev/null -w '%{http_code}' -u "admin:$(cat /tmp/pw.txt)" "http://localhost:8081/service/rest/v1/security/users")
-          echo "   авторизація в REST: HTTP $auth"
-          code=$(curl -s -o /tmp/put-real.out -w '%{http_code}' -u "admin:$(cat /tmp/pw.txt)" --upload-file lib/pom.xml \
-            "http://localhost:8081/repository/qa-releases/qa/mentorship/qa-demo-lib/1.0.0/qa-demo-lib-1.0.0.pom")
-          echo "   PUT артефакту: HTTP $code"
-          echo "::error title=Діагностика кред::REST auth HTTP $auth, PUT артефакту HTTP $code (тим самим паролем, що й Maven)"
-          echo "::notice title=Діагностика PUT::HTTP $code (тим самим шляхом, куди пише Maven)"
-          echo "::notice title=Діагностика settings::$(head -c 120 /tmp/pw.txt | wc -c) символів у паролі, id qa-releases: $(grep -c '<id>qa-releases</id>' /tmp/eff.xml 2>/dev/null || echo 0)"
-          echo "::notice title=Діагностика коду сторінки::$(head -c 150 /tmp/put-real.out 2>/dev/null | tr -d '\n')"
-          head -c 200 /tmp/put-real.out || true
-
-      - name: Підставити в settings.xml робочий пароль адміністратора
-        run: |
-          # Nexus генерує пароль адміністратора сам; у різних версіях він або у файлі
-          # /nexus-data/admin.password, або відразу з env. Тому не вгадуємо, а перевіряємо,
-          # який із двох справді авторизується ПРЯМО ЗАРАЗ, і підставляємо саме його.
-          FROM_FILE=$(docker compose exec -T nexus cat /nexus-data/admin.password 2>/dev/null | tr -d '\r\n' || true)
-          CANDIDATES="$FROM_FILE qa-stand-admin"
-          WORKING=""
-          for pw in $CANDIDATES; do
-            [ -z "$pw" ] && continue
-            # перевіряємо саме ЗАПИС: читання списку репозиторіїв доступне анонімно і нічого не доводить
-            c=$(curl -s -o /dev/null -w '%{http_code}' -u "admin:$pw" -X PUT --data-binary "@settings.xml" \
-              "http://localhost:8081/repository/qa-releases/qa/mentorship/probe-check.txt")
-            if [ "$c" = "200" ] || [ "$c" = "201" ] || [ "$c" = "204" ]; then
-              WORKING="$pw"
-              break
-            fi
-          done
-          if [ -z "$WORKING" ]; then
-            echo "::error title=Rобочий пароль::жоден із кандидатів не авторизується (файл: ${#FROM_FILE} символів)"
-            exit 1
-          fi
-          echo "::error title=Робочий пароль::знайдено пароль, що авторизується (з файлу: $([ -n "$FROM_FILE" ] && echo так || echo ні))"
-          python3 - "$WORKING" <<'PY'
-          import pathlib, sys
-          pw = sys.argv[1]
-          p = pathlib.Path("settings.xml")
-          t = p.read_text(encoding="utf-8")
-          import re
-          t = re.sub(r"<password>[^<]*</password>", f"<password>{pw}</password>", t)
-          p.write_text(t, encoding="utf-8")
-          print("   settings.xml оновлено робочим паролем")
-          PY
-
       - name: Задеплоїти власний артефакт у внутрішній репозиторій
         run: |
           mkdir -p /tmp/local-repo
@@ -130,19 +71,6 @@ jobs:
           else
             echo "Очікувано: без внутрішнього репозиторію залежність не розвʼязується"
           fi
-
-      - name: Показати рядки Maven про авторизацію
-        if: failure()
-        run: |
-          tr -d '\r' < /tmp/deploy.log > /tmp/deploy.clean.log || true
-          echo "=== рядки про авторизацію ==="
-          grep -a -m10 -iE 'authoriz|authenticat|credentials|basic |challenge|WWW-Auth' /tmp/deploy.clean.log || echo "(рядків про авторизацію немає)"
-          while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error title=Maven auth::$line"
-          done < <(grep -a -m6 -iE 'authoriz|authenticat|credentials|basic |WWW-Auth' /tmp/deploy.clean.log || true)
-          while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error title=Maven repository::$line"
-          done < <(grep -a -m4 -E 'Using (mirror|server)|repository.*qa-releases|qa-releases.*repository' /tmp/deploy.clean.log || true)
 
       - name: Пояснити причину падіння (анотація у UI)
         if: failure()
