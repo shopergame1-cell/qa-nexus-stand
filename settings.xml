@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- TASK-55.1: приклад settings.xml для стенда. Пароль у реальному житті НЕ зберігають у git:
-     використовують mvn --encrypt-password і вставляють сюди вже зашифроване значення. -->
+<!-- TASK-55.1: приклад settings.xml для стенда.
+     Тут навмисно зібрані дві класичні пастки: вузький mirrorOf і дозвіл http для локального стенда. Пароль у реальному житті НЕ зберігають у git:
+     використовують mvn encrypt-password (шифрування пароля) і вставляють сюди вже зашифроване значення. -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
   <servers>
     <!-- ВАЖЛИВО: id сервера мусить збігатися з id репозиторію в pom.xml,
@@ -14,6 +15,15 @@
   <mirrors>
     <!-- Вузький mirrorOf: перехоплюємо ТІЛЬКИ central, інакше mirror зламає доступ
          до внутрішніх репозиторіїв (сценарій 3 з TASK-55.2) -->
+    <!-- ПАСТКА: Maven 3.8+ з коробки блокує БУДЬ-ЯКИЙ http-репозиторій (не https).
+         Локальний Nexus працює саме по http, тому дозволяємо це явно.
+         У продакшені так робити не можна — там Nexus має бути за https. -->
+    <mirror>
+      <id>maven-default-http-blocker</id>
+      <mirrorOf>external:http:*</mirrorOf>
+      <url>http://0.0.0.0/</url>
+      <blocked>false</blocked>
+    </mirror>
     <mirror>
       <id>qa-public-mirror</id>
       <name>Stand group repository</name>

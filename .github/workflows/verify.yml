@@ -58,7 +58,23 @@ jobs:
 
       - name: Логи Nexus, якщо щось впало
         if: failure()
-        run: docker compose logs --tail=200
+        run: |
+          docker compose logs --tail=200
+          echo "--- локальний кеш ---"
+          ls -R /tmp/local-repo 2>/dev/null | head -40 || true
+          echo "--- перевірка доступності репозиторію ззовні ---"
+          curl -s -u admin:qa-stand-admin -o /dev/null -w 'qa-releases: %{http_code}\n' \
+            http://localhost:8081/repository/qa-releases/ || true
+
+      - name: Вивантажити логи прогону (щоб було видно причину без доступу до UI)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-logs
+          path: |
+            /tmp/consumer.log
+            /tmp/local-repo/**/*.pom
+          if-no-files-found: ignore
 
       - name: Прибрати стенд
         if: always()
